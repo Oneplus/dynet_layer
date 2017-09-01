@@ -18,6 +18,7 @@ struct LayerI {
   void inactive_training() { trainable = false; }
   // Initialize parameter
   virtual void new_graph(dynet::ComputationGraph& cg) = 0;
+  virtual std::vector<dynet::Expression> get_params() = 0;
 };
 
 struct SymbolEmbedding : public LayerI {
@@ -29,6 +30,7 @@ struct SymbolEmbedding : public LayerI {
                   unsigned dim,
                   bool trainable = true);
   void new_graph(dynet::ComputationGraph& cg) override;
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression embed(unsigned label_id);
 };
 
@@ -42,6 +44,7 @@ struct BinnedDistanceEmbedding : public LayerI {
                           unsigned n_bin = 8,
                           bool trainable = true);
   void new_graph(dynet::ComputationGraph& cg) override;
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression embed(int distance);
 };
 
@@ -55,6 +58,7 @@ struct BinnedDurationEmbedding : public LayerI {
                           unsigned n_bin = 8,
                           bool trainable = true);
   void new_graph(dynet::ComputationGraph& cg) override;
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression embed(unsigned dur);
 };
 
@@ -117,6 +121,13 @@ struct RNNLayer : public LayerI {
     rnn.new_graph(hg);
     guard = dynet::parameter(hg, p_guard);
   }
+
+  std::vector<dynet::Expression> get_params() override {
+    std::vector<dynet::Expression> ret;
+    for (auto & layer : rnn.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    return ret;
+  }
+
   void set_dropout(float& rate) { rnn.set_dropout(rate); }
   void disable_dropout() { rnn.disable_dropout(); }
 };
@@ -189,6 +200,13 @@ struct BiRNNLayer : public LayerI {
     bw_guard = dynet::parameter(hg, p_bw_guard);
   }
 
+  std::vector<dynet::Expression> get_params() override {
+    std::vector<dynet::Expression> ret;
+    for (auto & layer : fw_rnn.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    for (auto & layer : bw_rnn.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    return ret;
+  }
+
   void set_dropout(float& rate) {
     fw_rnn.set_dropout(rate);
     bw_rnn.set_dropout(rate);
@@ -205,8 +223,12 @@ struct InputLayer : public LayerI {
   unsigned dim;
   InputLayer(unsigned dim) : LayerI(false), dim(dim) {}
 
-  void new_graph(dynet::ComputationGraph& cg) {
+  void new_graph(dynet::ComputationGraph& cg) override {
     _cg = &cg;
+  }
+
+  std::vector<dynet::Expression> get_params() override {
+    return std::vector<dynet::Expression>();
   }
 
   dynet::Expression get_output(const std::vector<float> & data) {
@@ -224,7 +246,7 @@ struct SoftmaxLayer : public LayerI {
                bool trainable = true);
 
   void new_graph(dynet::ComputationGraph& hg) override;
-
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression & expr);
 };
 
@@ -238,7 +260,7 @@ struct DenseLayer : public LayerI {
              bool trainable = true);
 
   void new_graph(dynet::ComputationGraph& hg) override;
-
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression & expr);
 };
 
@@ -253,7 +275,7 @@ struct Merge2Layer : public LayerI {
               bool trainable = true);
 
   void new_graph(dynet::ComputationGraph& hg) override;
-
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression & expr1,
                                const dynet::Expression & expr2);
 };
@@ -270,7 +292,7 @@ struct Merge3Layer : public LayerI {
               bool trainable = true);
 
   void new_graph(dynet::ComputationGraph& hg) override;
-
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression& expr1,
                                const dynet::Expression& expr2,
                                const dynet::Expression& expr3);
@@ -289,7 +311,7 @@ struct Merge4Layer : public LayerI {
               bool trainable = true);
 
   void new_graph(dynet::ComputationGraph& hg) override;
-
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression& expr1,
                                const dynet::Expression& expr2,
                                const dynet::Expression& expr3,
@@ -310,7 +332,7 @@ struct Merge5Layer : public LayerI {
               bool trainable = true);
 
   void new_graph(dynet::ComputationGraph& hg) override;
-
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression& expr1,
                                const dynet::Expression& expr2,
                                const dynet::Expression& expr3,
@@ -332,6 +354,7 @@ struct Merge6Layer : public LayerI {
               unsigned dim_output,
               bool trainable = true);
   void new_graph(dynet::ComputationGraph& hg) override;
+  std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const dynet::Expression& expr1,
                                const dynet::Expression& expr2,
                                const dynet::Expression& expr3,
@@ -367,7 +390,14 @@ struct SegUniEmbedding : public LayerI {
       h0 = dynet::const_parameter(cg, p_h0);
     }
   }
-
+  
+  std::vector<dynet::Expression> get_params() override {
+    std::vector<dynet::Expression> ret;
+    for (auto & layer : builder.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    ret.push_back(h0);
+    return ret;
+  }
+  
   void construct_chart(const std::vector<dynet::Expression>& c,
                        int max_seg_len = 0) {
     len = c.size();
@@ -425,6 +455,13 @@ struct SegBiEmbedding : public LayerI {
   void new_graph(dynet::ComputationGraph & cg) {
     fwd.new_graph(cg);
     bwd.new_graph(cg);
+  }
+
+  std::vector<dynet::Expression> get_params() override {
+    std::vector<dynet::Expression> ret;
+    for (auto & e : fwd.get_params()) { ret.push_back(e); }
+    for (auto & e : bwd.get_params()) { ret.push_back(e); }
+    return ret;
   }
 
   void construct_chart(const std::vector<dynet::Expression>& c,
