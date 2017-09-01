@@ -9,6 +9,7 @@
 #include <set>
 #include "dynet/dynet.h"
 #include "dynet/expr.h"
+#include "dynet/rnn.h"
 
 struct LayerI {
   bool trainable;
@@ -390,8 +391,8 @@ struct SegUniEmbedding : public LayerI {
   }
 
   const dynet::Expression& operator()(unsigned i, unsigned j) const {
-    BOOST_ASSERT(j <= len);
-    BOOST_ASSERT(j >= i);
+    assert(j <= len);
+    assert(j >= i);
     return h[i][j - i];
   }
 
@@ -454,8 +455,8 @@ struct SegBiEmbedding : public LayerI {
   }
 
   const ExpressionPair& operator()(unsigned i, unsigned j) const {
-    BOOST_ASSERT(j <= len);
-    BOOST_ASSERT(j >= i);
+    assert(j <= len);
+    assert(j >= i);
     return h[i][j - i];
   }
 
