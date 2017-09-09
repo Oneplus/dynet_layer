@@ -190,7 +190,7 @@ struct BiRNNLayer : public LayerI {
     }
   }
 
-  void new_graph(dynet::ComputationGraph& hg) {
+  void new_graph(dynet::ComputationGraph& hg) override {
     if (!trainable) {
       std::cerr << "WARN: not-trainable RNN is not implemented." << std::endl;
     }
@@ -382,7 +382,7 @@ struct SegUniEmbedding : public LayerI {
     builder(n_layers, rnn_input_dim, seg_dim, m) {
   }
 
-  void new_graph(dynet::ComputationGraph & cg) {
+  void new_graph(dynet::ComputationGraph & cg) override {
     builder.new_graph(cg);
     if (trainable) {
       h0 = dynet::parameter(cg, p_h0);
@@ -452,7 +452,7 @@ struct SegBiEmbedding : public LayerI {
     bwd(m, n_layers, rnn_input_dim, seg_dim) {
   }
 
-  void new_graph(dynet::ComputationGraph & cg) {
+  void new_graph(dynet::ComputationGraph & cg) override {
     fwd.new_graph(cg);
     bwd.new_graph(cg);
   }
