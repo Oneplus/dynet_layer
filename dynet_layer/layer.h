@@ -167,12 +167,15 @@ struct BiRNNLayer : public LayerI {
     fw_hidden.resize(n_items);
     bw_hidden.resize(n_items);
 
-    if (has_guard) { fw_rnn.add_input(fw_guard); }
+    if (has_guard) {
+      fw_rnn.add_input(fw_guard);
+      bw_rnn.add_input(bw_guard);
+    }
     for (unsigned i = 0; i < n_items; ++i) {
       fw_hidden[i] = fw_rnn.add_input(inputs[i]);
       bw_hidden[n_items - i - 1] = bw_rnn.add_input(inputs[n_items - i - 1]);
     }
-    if (has_guard) { bw_rnn.add_input(bw_guard); }
+
   }
 
   BiRNNOutput get_output(int index) {
