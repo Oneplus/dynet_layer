@@ -125,6 +125,7 @@ struct RNNLayer : public LayerI {
   std::vector<dynet::Expression> get_params() override {
     std::vector<dynet::Expression> ret;
     for (auto & layer : rnn.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    if (has_guard) { ret.push_back(guard); }
     return ret;
   }
 
@@ -207,6 +208,10 @@ struct BiRNNLayer : public LayerI {
     std::vector<dynet::Expression> ret;
     for (auto & layer : fw_rnn.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
     for (auto & layer : bw_rnn.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    if (has_guard) {
+      ret.push_back(fw_guard);
+      ret.push_back(bw_guard);
+    }
     return ret;
   }
 
@@ -219,6 +224,25 @@ struct BiRNNLayer : public LayerI {
     fw_rnn.disable_dropout();
     bw_rnn.disable_dropout();
   }
+};
+
+struct Conv1dLayer : public LayerI {
+  std::vector<std::vector<dynet::Parameter>> p_filters;
+  std::vector<std::vector<dynet::Parameter>> p_biases;
+  std::vector<std::vector<dynet::Expression>> filters;
+  std::vector<std::vector<dynet::Expression>> biases;
+  std::vector<std::vector<dynet::Expression>> h;
+  std::vector<std::pair<unsigned, unsigned>> filters_info;
+  dynet::Expression padding;
+  unsigned dim;
+
+  Conv1dLayer(dynet::ParameterCollection & m,
+           unsigned dim,
+           const std::vector<std::pair<unsigned, unsigned>>& filter_info,
+           bool trainable = true);
+  void new_graph(dynet::ComputationGraph& hg) override;
+  std::vector<dynet::Expression> get_params() override;
+  dynet::Expression get_output(const std::vector<dynet::Expression>& exprs);
 };
 
 struct InputLayer : public LayerI {
