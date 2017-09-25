@@ -12,6 +12,7 @@
 #include "dynet/rnn.h"
 
 struct LayerI {
+  enum ACTIVATION_TYPE { kRelu, kTanh };
   bool trainable;
   LayerI(bool trainable) : trainable(trainable) {}
   void active_training() { trainable = true; }
@@ -227,19 +228,22 @@ struct BiRNNLayer : public LayerI {
 };
 
 struct Conv1dLayer : public LayerI {
-  std::vector<std::vector<dynet::Parameter>> p_filters;
-  std::vector<std::vector<dynet::Parameter>> p_biases;
-  std::vector<std::vector<dynet::Expression>> filters;
-  std::vector<std::vector<dynet::Expression>> biases;
-  std::vector<std::vector<dynet::Expression>> h;
-  std::vector<std::pair<unsigned, unsigned>> filters_info;
+  std::vector<dynet::Parameter> p_filters;
+  std::vector<dynet::Parameter> p_biases;
+  std::vector<dynet::Expression> filters;
+  std::vector<dynet::Expression> biases;
   dynet::Expression padding;
+  std::vector<std::pair<unsigned, unsigned>> filters_info;
+  ACTIVATION_TYPE activation;
   unsigned dim;
+  bool has_bias;
 
   Conv1dLayer(dynet::ParameterCollection & m,
-           unsigned dim,
-           const std::vector<std::pair<unsigned, unsigned>>& filter_info,
-           bool trainable = true);
+              unsigned dim,
+              const std::vector<std::pair<unsigned, unsigned>>& filter_info,
+              ACTIVATION_TYPE actionation = kTanh,
+              bool has_bias = false,
+              bool trainable = true);
   void new_graph(dynet::ComputationGraph& hg) override;
   std::vector<dynet::Expression> get_params() override;
   dynet::Expression get_output(const std::vector<dynet::Expression>& exprs);

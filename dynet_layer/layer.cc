@@ -363,24 +363,28 @@ dynet::Expression Merge6Layer::get_output(
 }
 
 Conv1dLayer::Conv1dLayer(dynet::ParameterCollection & m,
-                   unsigned dim,
-                   const std::vector<std::pair<unsigned, unsigned>>& filters_info,
-                   bool trainable) :
+                         unsigned dim,
+                         const std::vector<std::pair<unsigned, unsigned>>& filters_info,
+                         ACTIVATION_TYPE activation,
+                         bool has_bias,
+                         bool trainable) :
   LayerI(trainable),
   filters_info(filters_info),
-  dim(dim) {
+  activation(activation),
+  dim(dim),
+  has_bias(has_bias) {
   unsigned n_filter_types = filters_info.size();
   unsigned combined_dim = 0;
   p_filters.resize(n_filter_types);
-  p_biases.resize(n_filter_types);
+  if (has_bias) {
+    p_biases.resize(n_filter_types);
+  }
   for (unsigned i = 0; i < n_filter_types; ++i) {
     const auto& filter_width = filters_info[i].first;
     const auto& nb_filters = filters_info[i].second;
-    p_filters[i].resize(nb_filters);
-    p_biases[i].resize(nb_filters);
-    for (unsigned j = 0; j < nb_filters; ++j) {
-      p_filters[i][j] = m.add_parameters({ dim, filter_width });
-      p_biases[i][j] = m.add_parameters({ dim }, dynet::ParameterInitConst(0.f));
+    p_filters[i] = m.add_parameters({ dim, filter_width, nb_filters });
+    if (has_bias) {
+      p_biases[i] = m.add_parameters({ dim, nb_filters }, dynet::ParameterInitConst(0.f));
     }
   }
 }
@@ -388,18 +392,18 @@ Conv1dLayer::Conv1dLayer(dynet::ParameterCollection & m,
 void Conv1dLayer::new_graph(dynet::ComputationGraph & hg) {
   unsigned n_filter_types = filters_info.size();
   filters.resize(n_filter_types);
+  if (has_bias) {
+    biases.resize(n_filter_types);
+  }
   for (unsigned i = 0; i < n_filter_types; ++i) {
-    unsigned nb_filters = p_filters[i].size();
-    filters[i].resize(nb_filters);
-    biases[i].resize(nb_filters);
-    for (unsigned j = 0; j < nb_filters; ++j) {
-      filters[i][j] = (trainable ?
-                       dynet::parameter(hg, p_filters[i][j]) :
-                       dynet::const_parameter(hg, p_filters[i][j]));
+    filters[i] = (trainable ?
+                  dynet::parameter(hg, p_filters[i]) :
+                  dynet::const_parameter(hg, p_filters[i]));
 
-      biases[i][j] = (trainable ?
-                      dynet::parameter(hg, p_biases[i][j]) :
-                      dynet::const_parameter(hg, p_biases[i][j]));
+    if (has_bias) {
+      biases[i] = (trainable ?
+                   dynet::parameter(hg, p_biases[i]) :
+                   dynet::const_parameter(hg, p_biases[i]));
     }
   }
   padding = dynet::zeroes(hg, { dim });
@@ -407,8 +411,10 @@ void Conv1dLayer::new_graph(dynet::ComputationGraph & hg) {
 
 std::vector<dynet::Expression> Conv1dLayer::get_params() {
   std::vector<dynet::Expression> ret;
-  for (auto & payload : filters) { for (auto & e : payload) { ret.push_back(e); } }
-  for (auto & payload : biases) { for (auto & e : payload) {ret.push_back(e);} }
+  for (auto & e : filters) { ret.push_back(e); }
+  if (has_bias) {
+    for (auto & e : biases) { ret.push_back(e); }
+  }
   return ret;
 }
 
@@ -417,8 +423,6 @@ dynet::Expression Conv1dLayer::get_output(const std::vector<dynet::Expression>& 
   unsigned n_filter_types = filters_info.size();
   for (unsigned ii = 0; ii < n_filter_types; ++ii) {
     const auto& filter_width = filters_info[ii].first;
-    const auto& nb_filters = filters_info[ii].second;
- 
     unsigned n_cols = exprs.size() + (filter_width - 1) * 2;
     std::vector<dynet::Expression> s(n_cols);
     for (unsigned p = 0; p < filter_width - 1; ++p) {
@@ -428,16 +432,19 @@ dynet::Expression Conv1dLayer::get_output(const std::vector<dynet::Expression>& 
     for (unsigned i = 0; i < exprs.size(); ++i) {
       s[filter_width - 1 + i] = exprs[i];
     }
-
-    for (unsigned jj = 0; jj < nb_filters; ++jj) {
-      auto& filter = filters[ii][jj];
-      auto& bias = biases[ii][jj];
-      auto t = dynet::conv2d(dynet::concatenate_cols(s),
-                             filter,
-                             bias,
-                             {dim, filter_width}, false);
-      tmp.push_back(t);
+     
+    auto& filter = filters[ii];
+    auto t = dynet::filter1d_narrow(dynet::concatenate_cols(s), filter);
+    if (activation == kRelu) {
+      t = dynet::rectify(t);
+    } else if (activation == kTanh) {
+      t = dynet::tanh(t);
     }
+    if (has_bias) {
+      auto& bias = biases[ii];
+      t = dynet::colwise_add(t, bias);
+    }
+    tmp.push_back(dynet::kmax_pooling(t, 1));
   }
   return dynet::concatenate(tmp);
 }
