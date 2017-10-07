@@ -448,3 +448,95 @@ dynet::Expression Conv1dLayer::get_output(const std::vector<dynet::Expression>& 
   }
   return dynet::concatenate(tmp);
 }
+
+BiLinearLayer::BiLinearLayer(dynet::ParameterCollection & model,
+                             unsigned dim,
+                             bool trainable) :
+  LayerI(trainable),
+  p_W(model.add_parameters({dim}))
+{
+}
+
+void BiLinearLayer::new_graph(dynet::ComputationGraph & cg) {
+  W = dynet::parameter(cg, p_W);
+}
+
+std::vector<dynet::Expression> BiLinearLayer::get_params() {
+  std::vector<dynet::Expression> ret = { W };
+  return ret;
+}
+
+dynet::Expression BiLinearLayer::get_output(const dynet::Expression & expr1,
+                                            const dynet::Expression & expr2) {
+  dynet::Expression ret = dynet::transpose(expr1) * W * expr2;
+  return ret;
+}
+
+BiAffineLayer::BiAffineLayer(dynet::ParameterCollection & model,
+                             unsigned dim, 
+                             bool trainable) :
+  LayerI(trainable),
+  p_W(model.add_parameters({dim}))
+{
+}
+
+void BiAffineLayer::new_graph(dynet::ComputationGraph & cg) {
+  W = dynet::parameter(cg, p_W);
+}
+
+std::vector<dynet::Expression> BiAffineLayer::get_params() {
+  std::vector<dynet::Expression> ret = { W };
+  return ret;
+}
+
+dynet::Expression BiAffineLayer::get_output(const dynet::Expression & expr1, 
+                                            const dynet::Expression & expr2) {
+  return dynet::dot_product(dynet::cmult(expr1, W), expr2);
+}
+
+
+SegConcateEmbedding::SegConcateEmbedding(dynet::ParameterCollection& m,
+                                         unsigned input_dim, 
+                                         unsigned output_dim,
+                                         unsigned max_seg_len,
+                                         bool trainable) :
+  LayerI(trainable),
+  dense(m, input_dim * max_seg_len, output_dim),
+  input_dim(input_dim),
+  max_seg_len(max_seg_len) {
+}
+
+void SegConcateEmbedding::new_graph(dynet::ComputationGraph & cg) {
+  dense.new_graph(cg);
+  z = dynet::zeroes(cg, { input_dim });
+}
+
+std::vector<dynet::Expression> SegConcateEmbedding::get_params() {
+  return dense.get_params();
+}
+
+void SegConcateEmbedding::construct_chart(const std::vector<dynet::Expression>& c,
+                                          int max_seg_len) {
+  len = c.size();
+  h.clear(); // The first dimension for h is the starting point, the second is length.
+  h.resize(len);
+
+  for (unsigned i = 0; i < len; ++i) {
+    unsigned max_j = i + len;
+    if (max_seg_len) { max_j = i + max_seg_len; }
+    if (max_j > len) { max_j = len; }
+    unsigned seg_len = max_j - i;
+    auto& hi = h[i];
+    hi.resize(seg_len);
+
+    std::vector<dynet::Expression> s(max_seg_len, z);
+    for (unsigned k = 0; k < seg_len; ++k) {
+      s[k] = c[i + k];
+      hi[k] = dynet::rectify(dense.get_output(dynet::concatenate(s)));
+    }
+  }
+}
+
+const dynet::Expression& SegConcateEmbedding::operator()(unsigned i, unsigned j) const {
+  return h[i][j - i];
+}

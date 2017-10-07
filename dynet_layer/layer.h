@@ -295,6 +295,35 @@ struct DenseLayer : public LayerI {
   dynet::Expression get_output(const dynet::Expression & expr);
 };
 
+struct BiLinearLayer : public LayerI {
+  dynet::Parameter p_W;
+  dynet::Expression W;
+
+  BiLinearLayer(dynet::ParameterCollection & model,
+                unsigned dim,
+                bool trainable = true);
+
+  void new_graph(dynet::ComputationGraph & cg) override;
+  std::vector<dynet::Expression> get_params() override;
+  dynet::Expression get_output(const dynet::Expression & expr1,
+                               const dynet::Expression & expr2);
+};
+
+struct BiAffineLayer : public LayerI {
+  dynet::Parameter p_W;
+  dynet::Expression W;
+
+  BiAffineLayer(dynet::ParameterCollection & model,
+                unsigned dim,
+                bool trainable = true);
+
+  void new_graph(dynet::ComputationGraph & cg) override;
+  std::vector<dynet::Expression> get_params() override;
+  dynet::Expression get_output(const dynet::Expression & expr1,
+                               const dynet::Expression & expr2);
+
+};
+
 struct Merge2Layer : public LayerI {
   dynet::Parameter p_B, p_W1, p_W2;
   dynet::Expression B, W1, W2;
@@ -537,6 +566,30 @@ struct SegBiEmbedding : public LayerI {
     fwd.disable_dropout();
     bwd.disable_dropout();
   }
+};
+
+struct SegConcateEmbedding : public LayerI {
+  DenseLayer dense;
+  dynet::Expression z;
+  std::vector<std::vector<dynet::Expression>> h;
+  unsigned len;
+  unsigned input_dim;
+  unsigned max_seg_len;
+
+  explicit SegConcateEmbedding(dynet::ParameterCollection & m,
+                               unsigned input_dim,
+                               unsigned output_dim,
+                               unsigned max_seg_len,
+                               bool trainable=true);
+
+  void new_graph(dynet::ComputationGraph & cg) override;
+
+  std::vector<dynet::Expression> get_params() override;
+
+  void construct_chart(const std::vector<dynet::Expression>& c,
+                       int max_seg_len = 0);
+
+  const dynet::Expression& operator()(unsigned i, unsigned j) const;
 };
 
 #endif  //  end for LAYER_H
