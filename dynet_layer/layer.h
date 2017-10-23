@@ -424,22 +424,31 @@ struct Merge6Layer : public LayerI {
 };
 
 template <class RNNBuilderType>
-struct SegUniEmbedding : public LayerI {
+struct SegRNN : public LayerI {
   // uni-directional segment embedding.
   dynet::Parameter p_h0;
   dynet::Expression h0;
   RNNBuilderType builder;
   std::vector<std::vector<dynet::Expression>> h;
+  unsigned input_dim;
+  unsigned output_dim;
   unsigned len;
+  unsigned max_seg_len;
 
-  explicit SegUniEmbedding(dynet::ParameterCollection& m,
-                           unsigned n_layers,
-                           unsigned rnn_input_dim,
-                           unsigned seg_dim,
-                           bool trainable = true) :
+  // Single directional Segment RNN
+  explicit SegRNN(dynet::ParameterCollection& m,
+                  unsigned n_layers,
+                  unsigned input_dim,
+                  unsigned output_dim,
+                  unsigned max_seg_len,
+                  bool trainable = true) :
     LayerI(trainable),
-    p_h0(m.add_parameters({ rnn_input_dim })),
-    builder(n_layers, rnn_input_dim, seg_dim, m) {
+    p_h0(m.add_parameters({ input_dim }, dynet::ParameterInitConst(0.f))),
+    builder(n_layers, input_dim, output_dim, m),
+    input_dim(input_dim),
+    output_dim(output_dim),
+    max_seg_len(max_seg_len) {
+    assert(max_seg_len > 0);
   }
 
   void new_graph(dynet::ComputationGraph & cg) override {
@@ -453,19 +462,19 @@ struct SegUniEmbedding : public LayerI {
   
   std::vector<dynet::Expression> get_params() override {
     std::vector<dynet::Expression> ret;
-    for (auto & layer : builder.param_vars) { for (auto & e : layer) { ret.push_back(e); } }
+    for (auto & layer : builder.param_vars) {
+      for (auto & e : layer) { ret.push_back(e); } 
+    }
     ret.push_back(h0);
     return ret;
   }
   
-  void construct_chart(const std::vector<dynet::Expression>& c,
-                       int max_seg_len = 0) {
+  void construct_chart(const std::vector<dynet::Expression>& c) {
     len = c.size();
     h.clear(); // The first dimension for h is the starting point, the second is length.
     h.resize(len);
     for (unsigned i = 0; i < len; ++i) {
-      unsigned max_j = i + len;
-      if (max_seg_len) { max_j = i + max_seg_len; }
+      unsigned max_j = i + max_seg_len;
       if (max_j > len) { max_j = len; }
       unsigned seg_len = max_j - i;
       auto& hi = h[i];
@@ -496,20 +505,28 @@ struct SegUniEmbedding : public LayerI {
 };
 
 template <class RNNBuilderType>
-struct SegBiEmbedding : public LayerI {
+struct SegBiRNN : public LayerI {
   typedef std::pair<dynet::Expression, dynet::Expression> ExpressionPair;
-  SegUniEmbedding<RNNBuilderType> fwd, bwd;
+  SegRNN<RNNBuilderType> fwd;
+  SegRNN<RNNBuilderType> bwd;
   std::vector<std::vector<ExpressionPair>> h;
   unsigned len;
+  unsigned input_dim;
+  unsigned output_dim;
+  unsigned max_seg_len;
 
-  explicit SegBiEmbedding(dynet::ParameterCollection& m,
-                          unsigned n_layers,
-                          unsigned rnn_input_dim,
-                          unsigned seg_dim,
-                          bool trainable = true) :
+  explicit SegBiRNN(dynet::ParameterCollection& m,
+                    unsigned n_layers,
+                    unsigned input_dim,
+                    unsigned output_dim,
+                    unsigned max_seg_len,
+                    bool trainable = true) :
     LayerI(trainable),
-    fwd(m, n_layers, rnn_input_dim, seg_dim),
-    bwd(m, n_layers, rnn_input_dim, seg_dim) {
+    fwd(m, n_layers, input_dim, output_dim, max_seg_len),
+    bwd(m, n_layers, input_dim, output_dim, max_seg_len),
+    input_dim(input_dim),
+    output_dim(output_dim),
+    max_seg_len(max_seg_len) {
   }
 
   void new_graph(dynet::ComputationGraph & cg) override {
@@ -524,20 +541,18 @@ struct SegBiEmbedding : public LayerI {
     return ret;
   }
 
-  void construct_chart(const std::vector<dynet::Expression>& c,
-                       int max_seg_len = 0) {
+  void construct_chart(const std::vector<dynet::Expression>& c) {
     len = c.size();
-    fwd.construct_chart(c, max_seg_len);
+    fwd.construct_chart(c);
 
     std::vector<dynet::Expression> rc(len);
     for (unsigned i = 0; i < len; ++i) { rc[i] = c[len - i - 1]; }
-    bwd.construct_chart(rc, max_seg_len);
+    bwd.construct_chart(rc);
 
     h.clear();
     h.resize(len);
     for (unsigned i = 0; i < len; ++i) {
-      unsigned max_j = i + len;
-      if (max_seg_len) { max_j = i + max_seg_len; }
+      unsigned max_j = i + max_seg_len;
       if (max_j > len) { max_j = len; }
       auto& hi = h[i];
       unsigned seg_len = max_j - i;
@@ -568,28 +583,78 @@ struct SegBiEmbedding : public LayerI {
   }
 };
 
-struct SegConcateEmbedding : public LayerI {
+struct SegConcate : public LayerI {
   DenseLayer dense;
   dynet::Expression z;
   std::vector<std::vector<dynet::Expression>> h;
   unsigned len;
   unsigned input_dim;
+  unsigned output_dim;
   unsigned max_seg_len;
 
-  explicit SegConcateEmbedding(dynet::ParameterCollection & m,
-                               unsigned input_dim,
-                               unsigned output_dim,
-                               unsigned max_seg_len,
-                               bool trainable=true);
+  explicit SegConcate(dynet::ParameterCollection & m,
+                      unsigned input_dim,
+                      unsigned output_dim,
+                      unsigned max_seg_len,
+                      bool trainable=true);
 
   void new_graph(dynet::ComputationGraph & cg) override;
 
   std::vector<dynet::Expression> get_params() override;
 
-  void construct_chart(const std::vector<dynet::Expression>& c,
-                       int max_seg_len = 0);
+  void construct_chart(const std::vector<dynet::Expression>& c);
 
   const dynet::Expression& operator()(unsigned i, unsigned j) const;
+};
+
+struct SegConv : public LayerI {
+  Conv1dLayer conv;
+  std::vector<std::vector<dynet::Expression>> h;
+  unsigned len;
+  unsigned input_dim;
+  unsigned output_dim;
+  unsigned max_seg_len;
+
+  SegConv(dynet::ParameterCollection & m,
+          unsigned input_dim,
+          unsigned output_dim,
+          unsigned max_seg_len,
+          const std::vector<std::pair<unsigned, unsigned>>& filter_info,
+          bool trainable=true);
+
+  void new_graph(dynet::ComputationGraph & cg) override;
+
+  std::vector<dynet::Expression> get_params() override;
+
+  void construct_chart(const std::vector<dynet::Expression> & c);
+
+  const dynet::Expression & operator()(unsigned i, unsigned j) const;
+};
+
+struct SegDiff : public LayerI {
+  DenseLayer dense;
+  std::vector<std::vector<dynet::Expression>> h;
+  unsigned len;
+  unsigned input_dim;
+  unsigned output_dim;
+  unsigned max_seg_len;
+
+  // use the diff of first repr with the last repr to represent
+  // the segmentation. The dimension of input equals to that of
+  // the output.
+  SegDiff(dynet::ParameterCollection & m,
+          unsigned input_dim,
+          unsigned output_dim,
+          unsigned max_seg_len,
+          bool trainable = true);
+
+  void new_graph(dynet::ComputationGraph & cg) override;
+
+  std::vector<dynet::Expression> get_params() override;
+
+  void construct_chart(const std::vector<dynet::Expression> & c);
+  
+  const dynet::Expression & operator()(unsigned i, unsigned j) const;
 };
 
 #endif  //  end for LAYER_H

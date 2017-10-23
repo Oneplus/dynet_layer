@@ -495,7 +495,7 @@ dynet::Expression BiAffineLayer::get_output(const dynet::Expression & expr1,
 }
 
 
-SegConcateEmbedding::SegConcateEmbedding(dynet::ParameterCollection& m,
+SegConcate::SegConcate(dynet::ParameterCollection& m,
                                          unsigned input_dim, 
                                          unsigned output_dim,
                                          unsigned max_seg_len,
@@ -503,27 +503,26 @@ SegConcateEmbedding::SegConcateEmbedding(dynet::ParameterCollection& m,
   LayerI(trainable),
   dense(m, input_dim * max_seg_len, output_dim),
   input_dim(input_dim),
+  output_dim(output_dim),
   max_seg_len(max_seg_len) {
 }
 
-void SegConcateEmbedding::new_graph(dynet::ComputationGraph & cg) {
+void SegConcate::new_graph(dynet::ComputationGraph & cg) {
   dense.new_graph(cg);
   z = dynet::zeroes(cg, { input_dim });
 }
 
-std::vector<dynet::Expression> SegConcateEmbedding::get_params() {
+std::vector<dynet::Expression> SegConcate::get_params() {
   return dense.get_params();
 }
 
-void SegConcateEmbedding::construct_chart(const std::vector<dynet::Expression>& c,
-                                          int max_seg_len) {
+void SegConcate::construct_chart(const std::vector<dynet::Expression>& c) {
   len = c.size();
   h.clear(); // The first dimension for h is the starting point, the second is length.
   h.resize(len);
 
   for (unsigned i = 0; i < len; ++i) {
-    unsigned max_j = i + len;
-    if (max_seg_len) { max_j = i + max_seg_len; }
+    unsigned max_j = i + max_seg_len;
     if (max_j > len) { max_j = len; }
     unsigned seg_len = max_j - i;
     auto& hi = h[i];
@@ -537,6 +536,95 @@ void SegConcateEmbedding::construct_chart(const std::vector<dynet::Expression>& 
   }
 }
 
-const dynet::Expression& SegConcateEmbedding::operator()(unsigned i, unsigned j) const {
+const dynet::Expression& SegConcate::operator()(unsigned i, unsigned j) const {
+  return h[i][j - i];
+}
+
+SegDiff::SegDiff(dynet::ParameterCollection & m,
+                 unsigned input_dim,
+                 unsigned output_dim,
+                 unsigned max_seg_len,
+                 bool trainable) :
+  LayerI(trainable),
+  dense(m, input_dim, output_dim),
+  input_dim(input_dim),
+  output_dim(output_dim),
+  max_seg_len(max_seg_len) {
+}
+
+void SegDiff::new_graph(dynet::ComputationGraph & cg) {
+  dense.new_graph(cg);
+}
+
+std::vector<dynet::Expression> SegDiff::get_params() {
+  return dense.get_params();
+}
+
+void SegDiff::construct_chart(const std::vector<dynet::Expression>& c) {
+  len = c.size();
+  h.clear(); // The first dimension for h is the starting point, the second is length.
+  h.resize(len);
+
+  for (unsigned i = 0; i < len; ++i) {
+    unsigned max_j = i + max_seg_len;
+    if (max_j > len) { max_j = len; }
+    unsigned seg_len = max_j - i;
+    auto& hi = h[i];
+    hi.resize(seg_len);
+
+    for (unsigned k = 0; k < seg_len; ++k) {
+      hi[k] = dynet::rectify(dense.get_output(c[i] - c[i + k]));
+    }
+  }
+}
+
+const dynet::Expression & SegDiff::operator()(unsigned i, unsigned j) const {
+  // TODO: insert return statement here
+  return h[i][j - i];
+}
+
+SegConv::SegConv(dynet::ParameterCollection & m,
+                 unsigned input_dim,
+                 unsigned output_dim,
+                 unsigned max_seg_len,
+                 const std::vector<std::pair<unsigned, unsigned>>& filter_info,
+                 bool trainable) :
+  LayerI(trainable),
+  conv(m, input_dim, filter_info),
+  input_dim(input_dim),
+  output_dim(output_dim),
+  max_seg_len(max_seg_len) {
+}
+
+void SegConv::new_graph(dynet::ComputationGraph & cg) {
+  conv.new_graph(cg);
+}
+
+std::vector<dynet::Expression> SegConv::get_params() {
+  return conv.get_params();
+}
+
+void SegConv::construct_chart(const std::vector<dynet::Expression>& c) {
+  len = c.size();
+  h.clear(); // The first dimension for h is the starting point, the second is length.
+  h.resize(len);
+
+  for (unsigned i = 0; i < len; ++i) {
+    unsigned max_j = i + max_seg_len;
+    if (max_j > len) { max_j = len; }
+    unsigned seg_len = max_j - i;
+    auto& hi = h[i];
+    hi.resize(seg_len);
+
+    std::vector<dynet::Expression> cc;
+    for (unsigned k = 0; k < seg_len; ++k) {
+      cc.push_back(c[i + k]);
+      hi[k] = conv.get_output(cc);
+    }
+  }
+}
+
+const dynet::Expression & SegConv::operator()(unsigned i, unsigned j) const {
+  // TODO: insert return statement here
   return h[i][j - i];
 }
