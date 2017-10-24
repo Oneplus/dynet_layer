@@ -10,6 +10,7 @@
 #include "dynet/dynet.h"
 #include "dynet/expr.h"
 #include "dynet/rnn.h"
+#include "dynet/param-init.h"
 
 struct LayerI {
   enum ACTIVATION_TYPE { kRelu, kTanh };
