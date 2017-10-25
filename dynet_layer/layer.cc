@@ -542,22 +542,18 @@ const dynet::Expression& SegConcate::operator()(unsigned i, unsigned j) const {
 
 SegDiff::SegDiff(dynet::ParameterCollection & m,
                  unsigned input_dim,
-                 unsigned output_dim,
                  unsigned max_seg_len,
                  bool trainable) :
   LayerI(trainable),
-  dense(m, input_dim, output_dim),
   input_dim(input_dim),
-  output_dim(output_dim),
   max_seg_len(max_seg_len) {
 }
 
 void SegDiff::new_graph(dynet::ComputationGraph & cg) {
-  dense.new_graph(cg);
 }
 
 std::vector<dynet::Expression> SegDiff::get_params() {
-  return dense.get_params();
+  return std::vector<dynet::Expression>();
 }
 
 void SegDiff::construct_chart(const std::vector<dynet::Expression>& c) {
@@ -573,7 +569,7 @@ void SegDiff::construct_chart(const std::vector<dynet::Expression>& c) {
     hi.resize(seg_len);
 
     for (unsigned k = 0; k < seg_len; ++k) {
-      hi[k] = dynet::rectify(dense.get_output(c[i] - c[i + k]));
+      hi[k] = c[i] - c[i + k];
     }
   }
 }

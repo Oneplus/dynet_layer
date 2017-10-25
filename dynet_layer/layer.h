@@ -635,7 +635,6 @@ struct SegConv : public LayerI {
 };
 
 struct SegDiff : public LayerI {
-  DenseLayer dense;
   std::vector<std::vector<dynet::Expression>> h;
   unsigned len;
   unsigned input_dim;
@@ -647,7 +646,6 @@ struct SegDiff : public LayerI {
   // the output.
   SegDiff(dynet::ParameterCollection & m,
           unsigned input_dim,
-          unsigned output_dim,
           unsigned max_seg_len,
           bool trainable = true);
 
