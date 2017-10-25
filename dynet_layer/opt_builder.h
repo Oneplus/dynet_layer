@@ -24,6 +24,7 @@ struct OptimizerBuilder {
   bool enable_clipping;
 
   static po::options_description get_options();
+  static std::string get_optimizer_signature(const po::variables_map & conf);
 
   OptimizerBuilder(const po::variables_map& conf);
 

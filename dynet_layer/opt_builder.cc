@@ -19,6 +19,23 @@ po::options_description OptimizerBuilder::get_options() {
   return cmd;
 }
 
+std::string OptimizerBuilder::get_optimizer_signature(const po::variables_map & conf) {
+  std::ostringstream os;
+  if (conf["optimizer"].as<std::string>() == "simple_sgd") {
+    os << "sgd";
+  } else if (conf["optimizer"].as<std::string>() == "momentum_sgd") {
+    os << "momsgd";
+  } else {
+    os << conf["optimizer"].as<std::string>();
+  }
+  if (conf["optimizer-enable-clipping"].as<bool>()) {
+    os << "_clip";
+  } else {
+    os << "_noclip";
+  }
+  return os.str();
+}
+
 OptimizerBuilder::OptimizerBuilder(const po::variables_map & conf) : enable_clipping(false) {
   eta0 = 0.1f;
   if (conf.count("optimizer-eta0")) {
