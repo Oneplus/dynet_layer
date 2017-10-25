@@ -435,6 +435,7 @@ struct SegRNN : public LayerI {
   unsigned output_dim;
   unsigned len;
   unsigned max_seg_len;
+  bool has_guard;
 
   // Single directional Segment RNN
   explicit SegRNN(dynet::ParameterCollection& m,
@@ -442,22 +443,22 @@ struct SegRNN : public LayerI {
                   unsigned input_dim,
                   unsigned output_dim,
                   unsigned max_seg_len,
+                  bool has_guard = false,
                   bool trainable = true) :
     LayerI(trainable),
     p_h0(m.add_parameters({ input_dim }, dynet::ParameterInitConst(0.f))),
     builder(n_layers, input_dim, output_dim, m),
     input_dim(input_dim),
     output_dim(output_dim),
-    max_seg_len(max_seg_len) {
+    max_seg_len(max_seg_len),
+    has_guard(has_guard) {
     assert(max_seg_len > 0);
   }
 
   void new_graph(dynet::ComputationGraph & cg) override {
     builder.new_graph(cg);
-    if (trainable) {
-      h0 = dynet::parameter(cg, p_h0);
-    } else {
-      h0 = dynet::const_parameter(cg, p_h0);
+    if (has_guard) {
+      h0 = trainable ? dynet::parameter(cg, p_h0) : dynet::const_parameter(cg, p_h0);
     }
   }
   
@@ -466,7 +467,7 @@ struct SegRNN : public LayerI {
     for (auto & layer : builder.param_vars) {
       for (auto & e : layer) { ret.push_back(e); } 
     }
-    ret.push_back(h0);
+    if (has_guard) { ret.push_back(h0); }
     return ret;
   }
   
@@ -482,7 +483,7 @@ struct SegRNN : public LayerI {
       hi.resize(seg_len);
 
       builder.start_new_sequence();
-      builder.add_input(h0);
+      if (has_guard) { builder.add_input(h0); }
       // Put one span in h[i][j]
       for (unsigned k = 0; k < seg_len; ++k) {
         hi[k] = builder.add_input(c[i + k]);
@@ -521,10 +522,11 @@ struct SegBiRNN : public LayerI {
                     unsigned input_dim,
                     unsigned output_dim,
                     unsigned max_seg_len,
+                    bool has_guard = false,
                     bool trainable = true) :
     LayerI(trainable),
-    fwd(m, n_layers, input_dim, output_dim, max_seg_len),
-    bwd(m, n_layers, input_dim, output_dim, max_seg_len),
+    fwd(m, n_layers, input_dim, output_dim, max_seg_len, has_guard),
+    bwd(m, n_layers, input_dim, output_dim, max_seg_len, has_guard),
     input_dim(input_dim),
     output_dim(output_dim),
     max_seg_len(max_seg_len) {
