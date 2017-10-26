@@ -569,7 +569,7 @@ void SegDiff::construct_chart(const std::vector<dynet::Expression>& c) {
     hi.resize(seg_len);
 
     for (unsigned k = 0; k < seg_len; ++k) {
-      hi[k] = c[i] - c[i + k];
+      hi[k] = k ? c[i] - c[i + k] : c[i];
     }
   }
 }
