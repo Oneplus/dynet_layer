@@ -236,6 +236,7 @@ struct Conv1dLayer : public LayerI {
   dynet::Expression padding;
   std::vector<std::pair<unsigned, unsigned>> filters_info;
   ACTIVATION_TYPE activation;
+  unsigned n_filter_types;
   unsigned dim;
   bool has_bias;
 
@@ -615,12 +616,10 @@ struct SegConv : public LayerI {
   std::vector<std::vector<dynet::Expression>> h;
   unsigned len;
   unsigned input_dim;
-  unsigned output_dim;
   unsigned max_seg_len;
 
   SegConv(dynet::ParameterCollection & m,
           unsigned input_dim,
-          unsigned output_dim,
           unsigned max_seg_len,
           const std::vector<std::pair<unsigned, unsigned>>& filter_info,
           bool trainable=true);

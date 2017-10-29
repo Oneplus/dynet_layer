@@ -371,13 +371,14 @@ Conv1dLayer::Conv1dLayer(dynet::ParameterCollection & m,
   LayerI(trainable),
   filters_info(filters_info),
   activation(activation),
+  n_filter_types(filters_info.size()),
   dim(dim),
   has_bias(has_bias) {
-  unsigned n_filter_types = filters_info.size();
-  unsigned combined_dim = 0;
   p_filters.resize(n_filter_types);
+  filters.resize(n_filter_types);
   if (has_bias) {
     p_biases.resize(n_filter_types);
+    biases.resize(n_filter_types);
   }
   for (unsigned i = 0; i < n_filter_types; ++i) {
     const auto& filter_width = filters_info[i].first;
@@ -390,11 +391,6 @@ Conv1dLayer::Conv1dLayer(dynet::ParameterCollection & m,
 }
 
 void Conv1dLayer::new_graph(dynet::ComputationGraph & hg) {
-  unsigned n_filter_types = filters_info.size();
-  filters.resize(n_filter_types);
-  if (has_bias) {
-    biases.resize(n_filter_types);
-  }
   for (unsigned i = 0; i < n_filter_types; ++i) {
     filters[i] = (trainable ?
                   dynet::parameter(hg, p_filters[i]) :
@@ -581,14 +577,12 @@ const dynet::Expression & SegDiff::operator()(unsigned i, unsigned j) const {
 
 SegConv::SegConv(dynet::ParameterCollection & m,
                  unsigned input_dim,
-                 unsigned output_dim,
                  unsigned max_seg_len,
                  const std::vector<std::pair<unsigned, unsigned>>& filter_info,
                  bool trainable) :
   LayerI(trainable),
   conv(m, input_dim, filter_info),
   input_dim(input_dim),
-  output_dim(output_dim),
   max_seg_len(max_seg_len) {
 }
 
@@ -604,18 +598,47 @@ void SegConv::construct_chart(const std::vector<dynet::Expression>& c) {
   len = c.size();
   h.clear(); // The first dimension for h is the starting point, the second is length.
   h.resize(len);
+  
+  std::vector<dynet::Expression> t(conv.n_filter_types);
+  for (unsigned f = 0; f < conv.n_filter_types; ++f) {
+    const auto& filter_width = conv.filters_info[f].first;
+    unsigned n_cols = c.size() + (filter_width - 1) * 2;
+    std::vector<dynet::Expression> cc(n_cols);
+    for (unsigned p = 0; p < filter_width - 1; ++p) {
+      cc[p] = conv.padding;
+      cc[n_cols - 1 - p] = conv.padding;
+    }
+    for (unsigned k = 0; k < c.size(); ++k) {
+      cc[filter_width - 1 + k] = c[k];
+    }
 
+    auto& filter = conv.filters[f];
+    t[f] = dynet::filter1d_narrow(dynet::concatenate_cols(cc), filter);
+    if (conv.activation == Conv1dLayer::kRelu) {
+      t[f] = dynet::rectify(t[f]);
+    } else if (conv.activation == Conv1dLayer::kTanh) {
+      t[f] = dynet::tanh(t[f]);
+    }
+    if (conv.has_bias) {
+      auto& bias = conv.biases[f];
+      t[f] = dynet::colwise_add(t[f], bias);
+    }
+  }
+  
   for (unsigned i = 0; i < len; ++i) {
     unsigned max_j = i + max_seg_len;
     if (max_j > len) { max_j = len; }
     unsigned seg_len = max_j - i;
     auto& hi = h[i];
     hi.resize(seg_len);
-
-    std::vector<dynet::Expression> cc;
+    std::vector<unsigned> mask;
     for (unsigned k = 0; k < seg_len; ++k) {
-      cc.push_back(c[i + k]);
-      hi[k] = conv.get_output(cc);
+      mask.push_back(k + i);
+      std::vector<dynet::Expression> tmp(conv.n_filter_types);
+      for (unsigned f = 0; f < conv.n_filter_types; ++f) {
+        tmp[f] = dynet::kmax_pooling(dynet::select_cols(t[f], mask), 1);
+      }
+      hi[k] = dynet::concatenate(tmp);
     }
   }
 }
