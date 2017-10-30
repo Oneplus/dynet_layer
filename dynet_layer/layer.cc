@@ -602,15 +602,12 @@ void SegConv::construct_chart(const std::vector<dynet::Expression>& c) {
   std::vector<dynet::Expression> t(conv.n_filter_types);
   for (unsigned f = 0; f < conv.n_filter_types; ++f) {
     const auto& filter_width = conv.filters_info[f].first;
-    unsigned n_cols = c.size() + (filter_width - 1) * 2;
+    unsigned n_cols = c.size() + filter_width - 1;
     std::vector<dynet::Expression> cc(n_cols);
-    for (unsigned p = 0; p < filter_width - 1; ++p) {
-      cc[p] = conv.padding;
-      cc[n_cols - 1 - p] = conv.padding;
-    }
-    for (unsigned k = 0; k < c.size(); ++k) {
-      cc[filter_width - 1 + k] = c[k];
-    }
+    unsigned i = 0;
+    for (unsigned p = 0; p < filter_width / 2; ++p) { cc[i] = conv.padding; ++i; }
+    for (unsigned k = 0; k < c.size(); ++k) { cc[i] = c[k]; ++i; }
+    for (; i < n_cols;) { cc[i] = conv.padding; ++i; }
 
     auto& filter = conv.filters[f];
     t[f] = dynet::filter1d_narrow(dynet::concatenate_cols(cc), filter);
