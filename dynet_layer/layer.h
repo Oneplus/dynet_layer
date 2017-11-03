@@ -121,7 +121,9 @@ struct RNNLayer : public LayerI {
       std::cerr << "WARN: not-trainable RNN is not implemented." << std::endl;
     }
     rnn.new_graph(hg);
-    guard = dynet::parameter(hg, p_guard);
+    if (has_guard) {
+      guard = dynet::parameter(hg, p_guard);
+    }
   }
 
   std::vector<dynet::Expression> get_params() override {
@@ -202,8 +204,10 @@ struct BiRNNLayer : public LayerI {
     }
     fw_rnn.new_graph(hg);
     bw_rnn.new_graph(hg);
-    fw_guard = dynet::parameter(hg, p_fw_guard);
-    bw_guard = dynet::parameter(hg, p_bw_guard);
+    if (has_guard) {
+      fw_guard = dynet::parameter(hg, p_fw_guard);
+      bw_guard = dynet::parameter(hg, p_bw_guard);
+    }
   }
 
   std::vector<dynet::Expression> get_params() override {
