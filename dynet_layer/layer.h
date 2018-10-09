@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <map>
 #include <set>
+#include <cassert>
 #include "dynet/dynet.h"
 #include "dynet/expr.h"
 #include "dynet/rnn.h"
